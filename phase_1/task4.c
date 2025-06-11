@@ -274,7 +274,7 @@ int main(){
 
 		nodes_on_seg[local_count] = g_segments[i].p2;
 		node_indices[local_count] = g_segments[i].end_idx;
-		dists_from_start[local_count] = distance(g_segments[i].p1, g_segments[i].p2);
+		dists_from_start[local_count] = distance(g_segments[i].p1,g_segments[i].p2);
 		local_count++;
 
 		// この道の上にある交差点を追加
