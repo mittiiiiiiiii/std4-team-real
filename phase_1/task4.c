@@ -202,158 +202,163 @@ int comparePoints(const void *a,const void *b) {
 }
 
 int main(){
-    int N,M,P,Q,i,j,a,b=0,u,v,unique_count,count=0,k_dummy;;
-    int intersection_count=0;
+	int i,j,a,b=0,u,v,unique_count,count=0,k_dummy;
+	int intersection_count=0;
+	
+	scanf("%d %d %d %d",&N,&M,&P,&Q);
 
-    scanf("%d %d %d %d",&N,&M,&P,&Q);
+	Point points[N];
+	for(i=0;i<N;i++){
+		scanf("%lf %lf",&points[i].x,&points[i].y);
+	}
+	for(i=0;i<N;i++){
+		g_points[i] = points[i];
+	}
+	
+	for (i=0;i<M;i++){
+		scanf("%d %d",&u,&v);
+		g_segments[i].p1=g_points[u-1];
+		g_segments[i].p2=g_points[v-1];
+		g_segments[i].start_idx=u-1;
+		g_segments[i].end_idx=v-1;
+	}
 
-    Point points[N];
-    for(i=0;i<N;i++){
-        scanf("%lf %lf",&points[i].x,&points[i].y);
-    }
-    for(i=0;i<N;i++){
-        g_points[i] = points[i];
-    }
-    
-    for (i=0;i<M;i++){
-        scanf("%d %d",&u,&v);
-        g_segments[i].p1=g_points[u-1];
-        g_segments[i].p2=g_points[v-1];
-        g_segments[i].start_idx=u-1;
-        g_segments[i].end_idx=v-1;
-    }
+	for(i=0;i<M;i++){
+		for(j=i+1;j<M;j++){
+			Point temp_intersection;
+			if(findIntersection(g_segments[i],g_segments[j],&temp_intersection)){
+				g_intersections[g_intersection_count++] = temp_intersection;
+			}
+		}
+	}
+	
+	// 見つけた交差点をソートして、重複を削除
+	qsort(g_intersections,g_intersection_count,sizeof(Point),comparePoints);
+	if(g_intersection_count>0){
+		unique_count = 1;
+		for (i=1;i<g_intersection_count;i++){
+			if (comparePoints(&g_intersections[i-1],&g_intersections[i])!=0){
+				g_intersections[unique_count++]=g_intersections[i];
+			}
+		}
+	}
+	g_intersection_count=unique_count;
 
-    for(i=0;i<M;i++){
-        for(j=i+1;j<M;j++){
-            Point temp_intersection;
-            if(findIntersection(g_segments[i],g_segments[j],&temp_intersection)){
-                g_intersections[g_intersection_count++] = temp_intersection;
-            }
-        }
-    }
-    
-    // 見つけた交差点をソートして、重複を削除
-    qsort(g_intersections,g_intersection_count,sizeof(Point),comparePoints);
-    if(g_intersection_count>0){
-        unique_count = 1;
-        for (i=1;i<g_intersection_count;i++){
-            if (comparePoints(&g_intersections[i-1],&g_intersections[i])!=0){
-                g_intersections[unique_count++]=g_intersections[i];
-            }
-        }
-    }
-    g_intersection_count=unique_count;
+	for(i=0;i<N;i++){
+		g_all_nodes[i]=g_points[i];
+	}
+	for(i=0;i<g_intersection_count;i++){
+		g_all_nodes[N+i]=g_intersections[i];
+	}
+	g_total_nodes=N+g_intersection_count;
 
-    for(i=0;i<N;i++){
-        g_all_nodes[i]=g_points[i];
-    }
-    for(i=0;i<g_intersection_count;i++){
-        g_all_nodes[N+i]=g_intersections[i];
-    }
-    g_total_nodes=N+g_intersection_count;
+	// グラフを初期化
+	for(i=0;i<g_total_nodes;i++){
+		for(j=0;j<g_total_nodes;j++){
+			g_graph[i][j] = INF;
+		}
+	}
 
-    // グラフを初期化
-    for(i=0;i<g_total_nodes;i++){
-        for(j=0;j<g_total_nodes;j++){
-            g_graph[i][j] = INF;
-        }
-    }
+	// 道（セグメント）を分解してグラフに辺（エッジ）を追加
+	for(i=0;i<M;i++){
+		int local_count = 0;
+		Point nodes_on_seg[MAX_NODES];
+		int node_indices[MAX_NODES];
+		double dists_from_start[MAX_NODES];
+		
+		// 道の両端を追加
+		nodes_on_seg[local_count] = g_segments[i].p1;
+		node_indices[local_count] = g_segments[i].start_idx;
+		dists_from_start[local_count] = 0.0;
+		local_count++;
 
-    // 道（セグメント）を分解してグラフに辺（エッジ）を追加
-    for(i=0;i<M;i++){
-        int local_count = 0;
-        Point nodes_on_seg[MAX_NODES];
-        int node_indices[MAX_NODES];
-        double dists_from_start[MAX_NODES];
-        
-        // 道の両端を追加
-        nodes_on_seg[local_count] = g_segments[i].p1;
-        node_indices[local_count] = g_segments[i].start_idx;
-        dists_from_start[local_count] = 0.0;
-        local_count++;
+		nodes_on_seg[local_count] = g_segments[i].p2;
+		node_indices[local_count] = g_segments[i].end_idx;
+		dists_from_start[local_count] = distance(g_segments[i].p1, g_segments[i].p2);
+		local_count++;
 
-        nodes_on_seg[local_count] = g_segments[i].p2;
-        node_indices[local_count] = g_segments[i].end_idx;
-        dists_from_start[local_count] = distance(g_segments[i].p1, g_segments[i].p2);
-        local_count++;
+		// この道の上にある交差点を追加
+		for(j=0;j<g_intersection_count;j++){
+			double d1 = distance(g_segments[i].p1,g_intersections[j]);
+			double d2 = distance(g_intersections[j],g_segments[i].p2);
+			double d_total = distance(g_segments[i].p1,g_segments[i].p2);
+			if(fabs(d1+d2-d_total) < EPS){ // 線分上にあるかチェック
+				nodes_on_seg[local_count] = g_intersections[j];
+				node_indices[local_count] = N + j;
+				dists_from_start[local_count] = d1;
+				local_count++;
+			}
+		}
 
-        // この道の上にある交差点を追加
-        for(j=0;j<g_intersection_count;j++){
-            double d1 = distance(g_segments[i].p1,g_intersections[j]);
-            double d2 = distance(g_intersections[j],g_segments[i].p2);
-            double d_total = distance(g_segments[i].p1,g_segments[i].p2);
-            if(fabs(d1+d2-d_total) < EPS){ // 線分上にあるかチェック
-                nodes_on_seg[local_count] = g_intersections[j];
-                node_indices[local_count] = N + j;
-                dists_from_start[local_count] = d1;
-                local_count++;
-            }
-        }
+		// 道の上にあるノードを始点からの距離でソート
+		int k;
+		for(j=0;j<local_count-1;j++){
+			for (k=0; k<local_count-j-1;k++){
+				if(dists_from_start[k]>dists_from_start[k+1]){
+					double temp_d=dists_from_start[k];
+					dists_from_start[k] = dists_from_start[k + 1];
+					dists_from_start[k + 1] = temp_d;
+					int temp_i = node_indices[k];
+					node_indices[k] = node_indices[k + 1];
+					node_indices[k + 1] = temp_i;
+				}
+			}
+		}
+		
+		for(j=0;j<local_count-1;j++){
+			int u = node_indices[j];
+			int v = node_indices[j + 1];
+			double cost = dists_from_start[j + 1] - dists_from_start[j];
+			if(cost > EPS){
+				g_graph[u][v] = g_graph[v][u] = cost;
+			}
+		}
+	}
+	
+	// --- 問い合わせ処理フェーズ ---
+	typedef struct {
+		char s_id[10], d_id[10];
+		int dummy;
+	} Query;
+	Query queries[Q];
 
-        // 道の上にあるノードを始点からの距離でソート
-        int k;
-        for(j=0;j<local_count-1;j++){
-            for (k=0; k<local_count-j-1;k++){
-                if(dists_from_start[k]>dists_from_start[k+1]){
-                    double temp_d=dists_from_start[k];
-                    dists_from_start[k] = dists_from_start[k + 1];
-                    dists_from_start[k + 1] = temp_d;
-                    int temp_i = node_indices[k];
-                    node_indices[k] = node_indices[k + 1];
-                    node_indices[k + 1] = temp_i;
-                }
-            }
-        }
-        
-        for(j=0;j<local_count-1;j++){
-            int u = node_indices[j];
-            int v = node_indices[j + 1];
-            double cost = dists_from_start[j + 1] - dists_from_start[j];
-            if(cost > EPS){
-                g_graph[u][v] = g_graph[v][u] = cost;
-            }
-        }
-    }
-    
-    for (i=0;i<Q;i++){
-        char s_id_str[10],d_id_str[10];
-        scanf("%s %s %d",s_id_str,d_id_str,&k_dummy);
-        
-        int start_node=-1,dest_node = -1;
-        if (s_id_str[0]=='C'){
-            int tmp;
-            sscanf(&s_id_str[1],"%d",&tmp);
-            start_node = N + tmp - 1;
-        } else {
-            sscanf(s_id_str,"%d",&start_node);
-            start_node--;
-        }
-        
-        if (d_id_str[0]=='C'){
-            int tmp;
-            sscanf(&d_id_str[1],"%d",&tmp);
-            dest_node=N+tmp-1;
-        } else {
-            sscanf(d_id_str,"%d",&dest_node);
-            dest_node--;
-        }
-        
-        if (start_node < 0 || start_node >= g_total_nodes || dest_node < 0 || dest_node >= g_total_nodes){
-            printf("NA\n");
-            continue;
-        }
-        
-        double dist[MAX_NODES];
-        char best[MAX_NODES][256];
-        dijkstra_multi(start_node, dist, best);
-        
-        if(dist[dest_node] >= INF){
-            printf("NA\n");
-        } else {
-            printf("%.5f\n", dist[dest_node]);
-            printf("%s\n", best[dest_node]);
-        }
-    }
-    
-    return 0;
+	// 全クエリを読み込む
+	for(i=0;i<Q;i++){
+		scanf("%s %s %d",queries[i].s_id,queries[i].d_id,&queries[i].dummy);
+	}
+	// 全クエリを処理
+	for(i=0;i<Q;i++){
+		int start_node=-1,dest_node=-1;
+		if(queries[i].s_id[0]=='C'){
+			int tmp;
+			sscanf(&queries[i].s_id[1],"%d",&tmp);
+			start_node = N + tmp - 1;
+		} else {
+			sscanf(queries[i].s_id,"%d",&start_node);
+			start_node--;
+		}
+		if(queries[i].d_id[0]=='C'){
+			int tmp;
+			sscanf(&queries[i].d_id[1],"%d",&tmp);
+			dest_node = N + tmp - 1;
+		} else {
+			sscanf(queries[i].d_id,"%d",&dest_node);
+			dest_node--;
+		}
+		if(start_node<0 || start_node>=g_total_nodes || dest_node<0 || dest_node>=g_total_nodes){
+			printf("NA\n");
+			continue;
+		}
+		double dist[MAX_NODES];
+		char best[MAX_NODES][256];
+		dijkstra_multi(start_node, dist, best);
+		if(dist[dest_node]>=INF){
+			printf("NA\n");
+		}else{
+			printf("%.5f\n", dist[dest_node]);
+			printf("%s\n", best[dest_node]);
+		}
+	}
+	
+	return 0;
 }
