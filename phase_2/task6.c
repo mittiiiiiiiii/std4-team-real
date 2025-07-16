@@ -167,7 +167,7 @@ void dijkstra_multi(int start, double dist[], char best[][256]) {
     }
 }
 
-// K最短路を求める関数（改良版）
+// K最短路を求める関数（シンプルで確実な版）
 int find_k_shortest_paths(int start, int end, int k, PathInfo results[]) {
     if (start == end) {
         results[0].distance = 0;
@@ -191,51 +191,39 @@ int find_k_shortest_paths(int start, int end, int k, PathInfo results[]) {
     int result_count = 1;
     
     // 候補経路を格納する配列
-    PathInfo candidates[200];
+    PathInfo candidates[100];
     int candidate_count = 0;
     
-    // パターン1: 単一エッジ削除（全方向）
-    for (int u = 0; u < g_total_nodes; u++) {
-        for (int v = 0; v < g_total_nodes; v++) {
-            if (g_graph[u][v] < INF) {
-                // エッジを一時的に削除
-                double saved_cost = g_graph[u][v];
-                g_graph[u][v] = g_graph[v][u] = INF;
-                
-                // 新しい最短路を計算
-                double temp_dist[MAX_NODES];
-                int temp_pred[MAX_NODES];
-                dijkstra_path(start, temp_dist, temp_pred);
-                
-                if (temp_dist[end] < INF) {
-                    PathInfo candidate;
-                    get_path(end, temp_pred, candidate.path, &candidate.path_length);
-                    candidate.distance = temp_dist[end];
+    // K-1回の反復でK最短路を求める
+    for (int iter = 1; iter < k; iter++) {
+        candidate_count = 0;
+        
+        // 全てのエッジを個別に削除して試す
+        for (int u = 0; u < g_total_nodes; u++) {
+            for (int v = 0; v < g_total_nodes; v++) {
+                if (g_graph[u][v] < INF) {
+                    // エッジを一時的に削除
+                    double saved_cost = g_graph[u][v];
+                    g_graph[u][v] = g_graph[v][u] = INF;
                     
-                    // 重複チェック
-                    int duplicate = 0;
-                    for (int i = 0; i < result_count; i++) {
-                        if (results[i].path_length == candidate.path_length) {
-                            int same = 1;
-                            for (int j = 0; j < candidate.path_length; j++) {
-                                if (results[i].path[j] != candidate.path[j]) {
-                                    same = 0;
-                                    break;
-                                }
-                            }
-                            if (same) {
-                                duplicate = 1;
-                                break;
-                            }
-                        }
-                    }
+                    // 新しい最短路を計算
+                    double temp_dist[MAX_NODES];
+                    int temp_pred[MAX_NODES];
+                    dijkstra_path(start, temp_dist, temp_pred);
                     
-                    if (!duplicate) {
-                        for (int i = 0; i < candidate_count; i++) {
-                            if (candidates[i].path_length == candidate.path_length) {
+                    if (temp_dist[end] < INF) {
+                        PathInfo candidate;
+                        get_path(end, temp_pred, candidate.path, &candidate.path_length);
+                        candidate.distance = temp_dist[end];
+                        
+                        // 既存の結果と重複チェック
+                        int duplicate = 0;
+                        for (int i = 0; i < result_count; i++) {
+                            if (fabs(results[i].distance - candidate.distance) < EPS &&
+                                results[i].path_length == candidate.path_length) {
                                 int same = 1;
                                 for (int j = 0; j < candidate.path_length; j++) {
-                                    if (candidates[i].path[j] != candidate.path[j]) {
+                                    if (results[i].path[j] != candidate.path[j]) {
                                         same = 0;
                                         break;
                                     }
@@ -246,66 +234,69 @@ int find_k_shortest_paths(int start, int end, int k, PathInfo results[]) {
                                 }
                             }
                         }
-                    }
-                    
-                    if (!duplicate && candidate_count < 200) {
-                        candidates[candidate_count++] = candidate;
-                    }
-                }
-                
-                // エッジを復元
-                g_graph[u][v] = g_graph[v][u] = saved_cost;
-            }
-        }
-    }
-    
-    // パターン2: 2つのエッジ削除
-    for (int u1 = 0; u1 < g_total_nodes && candidate_count < 150; u1++) {
-        for (int v1 = 0; v1 < g_total_nodes && candidate_count < 150; v1++) {
-            if (g_graph[u1][v1] < INF) {
-                for (int u2 = 0; u2 < g_total_nodes && candidate_count < 150; u2++) {
-                    for (int v2 = 0; v2 < g_total_nodes && candidate_count < 150; v2++) {
-                        if (g_graph[u2][v2] < INF && (u1 != u2 || v1 != v2)) {
-                            // 2つのエッジを一時的に削除
-                            double saved1 = g_graph[u1][v1];
-                            double saved2 = g_graph[u2][v2];
-                            g_graph[u1][v1] = g_graph[v1][u1] = INF;
-                            g_graph[u2][v2] = g_graph[v2][u2] = INF;
-                            
-                            // 新しい最短路を計算
-                            double temp_dist[MAX_NODES];
-                            int temp_pred[MAX_NODES];
-                            dijkstra_path(start, temp_dist, temp_pred);
-                            
-                            if (temp_dist[end] < INF) {
-                                PathInfo candidate;
-                                get_path(end, temp_pred, candidate.path, &candidate.path_length);
-                                candidate.distance = temp_dist[end];
-                                
-                                // 重複チェック
-                                int duplicate = 0;
-                                for (int i = 0; i < result_count; i++) {
-                                    if (results[i].path_length == candidate.path_length) {
-                                        int same = 1;
-                                        for (int j = 0; j < candidate.path_length; j++) {
-                                            if (results[i].path[j] != candidate.path[j]) {
-                                                same = 0;
-                                                break;
-                                            }
-                                        }
-                                        if (same) {
-                                            duplicate = 1;
+                        
+                        // 候補との重複もチェック
+                        if (!duplicate) {
+                            for (int i = 0; i < candidate_count; i++) {
+                                if (fabs(candidates[i].distance - candidate.distance) < EPS &&
+                                    candidates[i].path_length == candidate.path_length) {
+                                    int same = 1;
+                                    for (int j = 0; j < candidate.path_length; j++) {
+                                        if (candidates[i].path[j] != candidate.path[j]) {
+                                            same = 0;
                                             break;
                                         }
                                     }
+                                    if (same) {
+                                        duplicate = 1;
+                                        break;
+                                    }
                                 }
+                            }
+                        }
+                        
+                        if (!duplicate && candidate_count < 100) {
+                            candidates[candidate_count++] = candidate;
+                        }
+                    }
+                    
+                    // エッジを復元
+                    g_graph[u][v] = g_graph[v][u] = saved_cost;
+                }
+            }
+        }
+        
+        // 2つのエッジを削除するパターン
+        for (int u1 = 0; u1 < g_total_nodes && candidate_count < 80; u1++) {
+            for (int v1 = 0; v1 < g_total_nodes && candidate_count < 80; v1++) {
+                if (g_graph[u1][v1] < INF) {
+                    for (int u2 = u1; u2 < g_total_nodes && candidate_count < 80; u2++) {
+                        for (int v2 = (u2 == u1 ? v1 + 1 : 0); v2 < g_total_nodes && candidate_count < 80; v2++) {
+                            if (g_graph[u2][v2] < INF) {
+                                // 2つのエッジを一時的に削除
+                                double saved1 = g_graph[u1][v1];
+                                double saved2 = g_graph[u2][v2];
+                                g_graph[u1][v1] = g_graph[v1][u1] = INF;
+                                g_graph[u2][v2] = g_graph[v2][u2] = INF;
                                 
-                                if (!duplicate) {
-                                    for (int i = 0; i < candidate_count; i++) {
-                                        if (candidates[i].path_length == candidate.path_length) {
+                                // 新しい最短路を計算
+                                double temp_dist[MAX_NODES];
+                                int temp_pred[MAX_NODES];
+                                dijkstra_path(start, temp_dist, temp_pred);
+                                
+                                if (temp_dist[end] < INF) {
+                                    PathInfo candidate;
+                                    get_path(end, temp_pred, candidate.path, &candidate.path_length);
+                                    candidate.distance = temp_dist[end];
+                                    
+                                    // 重複チェック
+                                    int duplicate = 0;
+                                    for (int i = 0; i < result_count; i++) {
+                                        if (fabs(results[i].distance - candidate.distance) < EPS &&
+                                            results[i].path_length == candidate.path_length) {
                                             int same = 1;
                                             for (int j = 0; j < candidate.path_length; j++) {
-                                                if (candidates[i].path[j] != candidate.path[j]) {
+                                                if (results[i].path[j] != candidate.path[j]) {
                                                     same = 0;
                                                     break;
                                                 }
@@ -316,130 +307,81 @@ int find_k_shortest_paths(int start, int end, int k, PathInfo results[]) {
                                             }
                                         }
                                     }
+                                    
+                                    if (!duplicate) {
+                                        for (int i = 0; i < candidate_count; i++) {
+                                            if (fabs(candidates[i].distance - candidate.distance) < EPS &&
+                                                candidates[i].path_length == candidate.path_length) {
+                                                int same = 1;
+                                                for (int j = 0; j < candidate.path_length; j++) {
+                                                    if (candidates[i].path[j] != candidate.path[j]) {
+                                                        same = 0;
+                                                        break;
+                                                    }
+                                                }
+                                                if (same) {
+                                                    duplicate = 1;
+                                                    break;
+                                                }
+                                            }
+                                        }
+                                    }
+                                    
+                                    if (!duplicate && candidate_count < 100) {
+                                        candidates[candidate_count++] = candidate;
+                                    }
                                 }
                                 
-                                if (!duplicate && candidate_count < 200) {
-                                    candidates[candidate_count++] = candidate;
-                                }
-                            }
-                            
-                            // エッジを復元
-                            g_graph[u1][v1] = g_graph[v1][u1] = saved1;
-                            g_graph[u2][v2] = g_graph[v2][u2] = saved2;
-                        }
-                    }
-                }
-            }
-        }
-    }
-    
-    // パターン3: ノード削除
-    for (int node = 0; node < g_total_nodes && candidate_count < 180; node++) {
-        if (node != start && node != end) {
-            // ノードに接続するエッジを記録
-            double saved_edges[MAX_NODES];
-            int has_edge[MAX_NODES];
-            
-            for (int i = 0; i < g_total_nodes; i++) {
-                saved_edges[i] = g_graph[node][i];
-                has_edge[i] = (g_graph[node][i] < INF) ? 1 : 0;
-                if (has_edge[i]) {
-                    g_graph[node][i] = g_graph[i][node] = INF;
-                }
-            }
-            
-            // 新しい最短路を計算
-            double temp_dist[MAX_NODES];
-            int temp_pred[MAX_NODES];
-            dijkstra_path(start, temp_dist, temp_pred);
-            
-            if (temp_dist[end] < INF) {
-                PathInfo candidate;
-                get_path(end, temp_pred, candidate.path, &candidate.path_length);
-                candidate.distance = temp_dist[end];
-                
-                // 重複チェック
-                int duplicate = 0;
-                for (int i = 0; i < result_count; i++) {
-                    if (results[i].path_length == candidate.path_length) {
-                        int same = 1;
-                        for (int j = 0; j < candidate.path_length; j++) {
-                            if (results[i].path[j] != candidate.path[j]) {
-                                same = 0;
-                                break;
-                            }
-                        }
-                        if (same) {
-                            duplicate = 1;
-                            break;
-                        }
-                    }
-                }
-                
-                if (!duplicate) {
-                    for (int i = 0; i < candidate_count; i++) {
-                        if (candidates[i].path_length == candidate.path_length) {
-                            int same = 1;
-                            for (int j = 0; j < candidate.path_length; j++) {
-                                if (candidates[i].path[j] != candidate.path[j]) {
-                                    same = 0;
-                                    break;
-                                }
-                            }
-                            if (same) {
-                                duplicate = 1;
-                                break;
+                                // エッジを復元
+                                g_graph[u1][v1] = g_graph[v1][u1] = saved1;
+                                g_graph[u2][v2] = g_graph[v2][u2] = saved2;
                             }
                         }
                     }
-                }
-                
-                if (!duplicate && candidate_count < 200) {
-                    candidates[candidate_count++] = candidate;
-                }
-            }
-            
-            // エッジを復元
-            for (int i = 0; i < g_total_nodes; i++) {
-                if (has_edge[i]) {
-                    g_graph[node][i] = g_graph[i][node] = saved_edges[i];
-                }
-            }
-        }
-    }
-    
-    // 候補をソート（距離順）
-    for (int i = 0; i < candidate_count - 1; i++) {
-        for (int j = i + 1; j < candidate_count; j++) {
-            if (candidates[i].distance > candidates[j].distance) {
-                PathInfo temp = candidates[i];
-                candidates[i] = candidates[j];
-                candidates[j] = temp;
-            }
-        }
-    }
-    
-    // 最良の候補を結果に追加
-    for (int i = 0; i < candidate_count && result_count < k; i++) {
-        int duplicate = 0;
-        for (int j = 0; j < result_count; j++) {
-            if (results[j].path_length == candidates[i].path_length) {
-                int same = 1;
-                for (int l = 0; l < candidates[i].path_length; l++) {
-                    if (results[j].path[l] != candidates[i].path[l]) {
-                        same = 0;
-                        break;
-                    }
-                }
-                if (same) {
-                    duplicate = 1;
-                    break;
                 }
             }
         }
         
-        if (!duplicate) {
-            results[result_count++] = candidates[i];
+        // 候補の中から最短のものを選択
+        if (candidate_count == 0) {
+            break;
+        }
+        
+        // 候補をソート
+        for (int i = 0; i < candidate_count - 1; i++) {
+            for (int j = i + 1; j < candidate_count; j++) {
+                if (candidates[i].distance > candidates[j].distance) {
+                    PathInfo temp = candidates[i];
+                    candidates[i] = candidates[j];
+                    candidates[j] = temp;
+                }
+            }
+        }
+        
+        // 重複していない最短の候補を結果に追加
+        for (int i = 0; i < candidate_count; i++) {
+            int duplicate = 0;
+            for (int j = 0; j < result_count; j++) {
+                if (fabs(results[j].distance - candidates[i].distance) < EPS &&
+                    results[j].path_length == candidates[i].path_length) {
+                    int same = 1;
+                    for (int l = 0; l < candidates[i].path_length; l++) {
+                        if (results[j].path[l] != candidates[i].path[l]) {
+                            same = 0;
+                            break;
+                        }
+                    }
+                    if (same) {
+                        duplicate = 1;
+                        break;
+                    }
+                }
+            }
+            
+            if (!duplicate) {
+                results[result_count++] = candidates[i];
+                break;
+            }
         }
     }
     
