@@ -24,6 +24,13 @@ typedef struct {
     int start_idx,end_idx;
 }Segment;
 
+// K最短路のための経路構造体
+typedef struct {
+    double distance;
+    int path[MAX_NODES];
+    int path_length;
+} PathInfo;
+
 int N, M, P, Q;
 Point g_points[MAX_POINTS]; // 入力される地点
 Segment g_segments[MAX_ROADS]; // 入力される道
@@ -160,6 +167,102 @@ void dijkstra_multi(int start, double dist[], char best[][256]) {
     }
 }
 
+// K最短路を求める関数（修正版Yenアルゴリズム）
+int find_k_shortest_paths(int start, int end, int k, PathInfo results[]) {
+    if (start == end) {
+        results[0].distance = 0;
+        results[0].path_length = 1;
+        results[0].path[0] = start;
+        return 1;
+    }
+    
+    // 最初の最短路を求める
+    double dist[MAX_NODES];
+    int pred[MAX_NODES];
+    dijkstra_path(start, dist, pred);
+    
+    if (dist[end] >= INF) {
+        return 0;
+    }
+    
+    // 最初の経路を保存
+    get_path(end, pred, results[0].path, &results[0].path_length);
+    results[0].distance = dist[end];
+    int result_count = 1;
+    
+    // K-1個の追加の最短路を求める
+    for (int iter = 1; iter < k; iter++) {
+        double best_dist = INF;
+        int best_path[MAX_NODES];
+        int best_length = 0;
+        
+        // 全ての可能なエッジ削除パターンを試す
+        for (int u = 0; u < g_total_nodes; u++) {
+            for (int v = 0; v < g_total_nodes; v++) {
+                if (g_graph[u][v] < INF) {
+                    // エッジを一時的に削除
+                    double saved_cost = g_graph[u][v];
+                    g_graph[u][v] = g_graph[v][u] = INF;
+                    
+                    // 新しい最短路を計算
+                    double temp_dist[MAX_NODES];
+                    int temp_pred[MAX_NODES];
+                    dijkstra_path(start, temp_dist, temp_pred);
+                    
+                    if (temp_dist[end] < best_dist && temp_dist[end] < INF) {
+                        int temp_path[MAX_NODES];
+                        int temp_length;
+                        get_path(end, temp_pred, temp_path, &temp_length);
+                        
+                        // 重複チェック
+                        int duplicate = 0;
+                        for (int i = 0; i < result_count; i++) {
+                            if (results[i].path_length == temp_length) {
+                                int same = 1;
+                                for (int j = 0; j < temp_length; j++) {
+                                    if (results[i].path[j] != temp_path[j]) {
+                                        same = 0;
+                                        break;
+                                    }
+                                }
+                                if (same) {
+                                    duplicate = 1;
+                                    break;
+                                }
+                            }
+                        }
+                        
+                        if (!duplicate) {
+                            best_dist = temp_dist[end];
+                            best_length = temp_length;
+                            for (int j = 0; j < temp_length; j++) {
+                                best_path[j] = temp_path[j];
+                            }
+                        }
+                    }
+                    
+                    // エッジを復元
+                    g_graph[u][v] = g_graph[v][u] = saved_cost;
+                }
+            }
+        }
+        
+        if (best_dist >= INF) {
+            break; // これ以上の経路が存在しない
+        }
+        
+        // 新しい経路を保存
+        results[result_count].distance = best_dist;
+        results[result_count].path_length = best_length;
+        for (int j = 0; j < best_length; j++) {
+            results[result_count].path[j] = best_path[j];
+        }
+        result_count++;
+    }
+    
+    return result_count;
+}
+
 int findIntersection(Segment s1,Segment s2,Point *intersection) {
     double dx1=s1.p2.x-s1.p1.x;  // s1のx方向の差分
     double dy1=s1.p2.y-s1.p1.y;  // s1のy方向の差分
@@ -234,6 +337,7 @@ int main(){
 	
 	// 見つけた交差点をソートして、重複を削除
 	qsort(g_intersections,g_intersection_count,sizeof(Point),comparePoints);
+	unique_count = 0;
 	if(g_intersection_count>0){
 		unique_count = 1;
 		for (i=1;i<g_intersection_count;i++){
@@ -241,8 +345,8 @@ int main(){
 				g_intersections[unique_count++]=g_intersections[i];
 			}
 		}
+		g_intersection_count=unique_count;
 	}
-	g_intersection_count=unique_count;
 
 	for(i=0;i<N;i++){
 		g_all_nodes[i]=g_points[i];
@@ -318,13 +422,13 @@ int main(){
 	// --- 問い合わせ処理フェーズ ---
 	typedef struct {
 		char s_id[10], d_id[10];
-		int dummy;
+		int k;
 	} Query;
 	Query queries[Q];
 
 	// 全クエリを読み込む
 	for(i=0;i<Q;i++){
-		scanf("%s %s %d",queries[i].s_id,queries[i].d_id,&queries[i].dummy);
+		scanf("%s %s %d",queries[i].s_id,queries[i].d_id,&queries[i].k);
 	}
 	// 全クエリを処理
 	for(i=0;i<Q;i++){
@@ -349,14 +453,16 @@ int main(){
 			printf("NA\n");
 			continue;
 		}
-		double dist[MAX_NODES];
-		char best[MAX_NODES][256];
-		dijkstra_multi(start_node, dist, best);
-		if(dist[dest_node]>=INF){
+		
+		PathInfo k_paths[10];
+		int path_count = find_k_shortest_paths(start_node, dest_node, queries[i].k, k_paths);
+		
+		if(path_count == 0){
 			printf("NA\n");
-		}else{
-			printf("%.5f\n", dist[dest_node]);
-			printf("%s\n", best[dest_node]);
+		} else {
+			for(int j = 0; j < path_count; j++){
+				printf("%.5f\n", k_paths[j].distance);
+			}
 		}
 	}
 	
