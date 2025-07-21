@@ -3,13 +3,13 @@
 #include <stdlib.h>
 #include <string.h>
 
-// 座標や線分の最大数を定義
+// 座標や線分の最大数を定義（制約に準拠）
 #define MAX_POINTS 200001
 #define MAX_ROADS 100001
 #define MAX_N 200001
 #define MAX_M 100001
 #define MAX_INTERSECTIONS 100001
-#define MAX_NODES (MAX_POINTS+MAX_INTERSECTIONS)
+#define MAX_NODES 300001
 #define INF 1e12
 
 // 浮動小数点数の比較に使用する微小な値
@@ -47,26 +47,50 @@ typedef struct {
 } PathInfo;
 
 int N, M, P, Q;
-Point g_points[MAX_POINTS]; // 入力される地点
-Segment g_segments[MAX_ROADS]; // 入力される道
-Point g_intersections[MAX_INTERSECTIONS]; // 発見された交差点
+Point* g_points; // 入力される地点（動的割り当て）
+Segment* g_segments; // 入力される道（動的割り当て）
+Point* g_intersections; // 発見された交差点（動的割り当て）
 int g_intersection_count = 0; // 交差点の数
 
-Point g_all_nodes[MAX_NODES]; // 全てのノード(地点+交差点)の座標
+Point* g_all_nodes; // 全てのノード(地点+交差点)の座標（動的割り当て）
 int g_total_nodes = 0; // 全ノードの総数
-GraphEdge* g_graph[MAX_NODES]; // 隣接リストベースのグラフ
+GraphEdge** g_graph; // 隣接リストベースのグラフ（動的割り当て）
 
-Edge* adj[MAX_N];
-int visited[MAX_N];
-int disc[MAX_N];
-int low[MAX_N];
-int parent[MAX_N];
+Edge** adj;
+int* visited;
+int* disc;
+int* low;
+int* parent;
 int timer;
-Bridge bridges[MAX_M];
+Bridge* bridges;
 int bridge_count;
 
 double distance(Point a, Point b) {
     return sqrt(pow(a.x - b.x, 2) + pow(a.y - b.y, 2));
+}
+
+// メモリを動的に割り当てる関数
+void allocate_memory() {
+    g_points = (Point*)malloc(MAX_POINTS * sizeof(Point));
+    g_segments = (Segment*)malloc(MAX_ROADS * sizeof(Segment));
+    g_intersections = (Point*)malloc(MAX_INTERSECTIONS * sizeof(Point));
+    g_all_nodes = (Point*)malloc(MAX_NODES * sizeof(Point));
+    g_graph = (GraphEdge**)malloc(MAX_NODES * sizeof(GraphEdge*));
+    
+    adj = (Edge**)malloc(MAX_N * sizeof(Edge*));
+    visited = (int*)malloc(MAX_N * sizeof(int));
+    disc = (int*)malloc(MAX_N * sizeof(int));
+    low = (int*)malloc(MAX_N * sizeof(int));
+    parent = (int*)malloc(MAX_N * sizeof(int));
+    bridges = (Bridge*)malloc(MAX_M * sizeof(Bridge));
+    
+    // 初期化
+    for (int i = 0; i < MAX_NODES; i++) {
+        g_graph[i] = NULL;
+    }
+    for (int i = 0; i < MAX_N; i++) {
+        adj[i] = NULL;
+    }
 }
 
 // グラフにエッジを追加
@@ -208,7 +232,7 @@ void get_path(int v, int pred[], int path[], int *len) {
 }
 
 // 最適化されたダイクストラ法
-void dijkstra_path_optimized(int start_node, double dist[], int pred[]) {
+void dijkstra_path_optimized(int start_node, double* dist, int* pred) {
     PriorityQueue pq;
     pq_init(&pq);
     
@@ -249,17 +273,21 @@ int find_k_shortest_paths_optimized(int start, int end, int k, PathInfo results[
     }
     
     // 基本の最短路のみ計算（大規模データではK=1に限定）
-    double dist[MAX_NODES];
-    int pred[MAX_NODES];
+    double* dist = (double*)malloc(MAX_NODES * sizeof(double));
+    int* pred = (int*)malloc(MAX_NODES * sizeof(int));
     dijkstra_path_optimized(start, dist, pred);
     
     if (dist[end] >= INF) {
+        free(dist);
+        free(pred);
         return 0;
     }
     
     get_path(end, pred, results[0].path, &results[0].path_length);
     results[0].distance = dist[end];
     
+    free(dist);
+    free(pred);
     return 1; // 大規模データでは1つの経路のみ返す
 }
 
@@ -455,6 +483,9 @@ void build_graph_optimized() {
 int main() {
     int i, u, v;
     
+    // メモリを動的に割り当て
+    allocate_memory();
+    
     scanf("%d %d %d %d", &N, &M, &P, &Q);
     
     // 隣接リストを初期化
@@ -540,8 +571,8 @@ int main() {
             
             if (start_node >= 0 && start_node < g_total_nodes && 
                 dest_node >= 0 && dest_node < g_total_nodes) {
-                double dist[MAX_NODES];
-                int pred[MAX_NODES];
+                double* dist = (double*)malloc(MAX_NODES * sizeof(double));
+                int* pred = (int*)malloc(MAX_NODES * sizeof(int));
                 dijkstra_path_optimized(start_node, dist, pred);
                 
                 if (dist[dest_node] >= INF) {
@@ -549,6 +580,8 @@ int main() {
                 } else {
                     printf("%.5f\n", dist[dest_node]);
                 }
+                free(dist);
+                free(pred);
             } else {
                 printf("NA\n");
             }
